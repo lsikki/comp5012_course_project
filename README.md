@@ -1,6 +1,7 @@
 ## COMP-5012 "BIG DATA" Course Project
 
-#Setting up Kafka
+## 1. Setting up Kafka
+
 Follow the tutorial here: https://kafka.apache.org/quickstart
 
 To produce/consume to/from a topic, make sure the zookeeper and kafka servers are both running. 
