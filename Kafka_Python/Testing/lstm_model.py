@@ -7,6 +7,9 @@ from tensorflow.keras.layers import LSTM, Dense
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 
+def test():
+    return 7
+
 
 def lstm(st_data): 
     preprocessed_df = preprocess(st_data)
