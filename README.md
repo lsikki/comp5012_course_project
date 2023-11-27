@@ -64,7 +64,7 @@ It seems that to create a cluster, you simply need to submit jobs to the master'
 
 ## 5. Adding workers and submitting spark jobs to a cluster
 
-You can have one machine be a master and a slave at the same time. Or you can have one machine be a master and the other be a slave. It does not matter. The important thing to know is that all the machines you are using MUST have more than 8GB RAM or else it will crash. 
+You can have one machine be a master and a slave at the same time. Or you can have one machine be a master and the other be a slave. It does not matter. The important thing to know is that all the machines you are using MUST have more than 8GB RAM or you will get the error: "Python worker exited unexpectedly". 
 
 Mkae sure you have the zookeeper server and kafka server running (on all machines). 
 
