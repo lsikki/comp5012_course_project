@@ -60,4 +60,26 @@ For me, the above command looks like this: C:\spark\spark\bin\spark-submit --mas
 
 This will run it on your local machine. You will get a LOT of logging. In that logging, there will be a URL at port 4040 that you can follow to see the progression/status of the job.
 
-It seems that to create a cluster, you simply need to submit jobs to the master's URL insead of "--master local[*]" in your submission. More to come on this soon!
+It seems that to create a cluster, you simply need to submit jobs to the master's URL insead of "--master local[*]" in your submission. 
+
+## 5. Adding workers and submitting spark jobs to a cluster
+
+You can have one machine be a master and a slave at the same time. Or you can have one machine be a master and the other be a slave. It does not matter. The important thing to know is that all the machines you are using MUST have more than 8GB RAM or else it will crash. 
+
+Mkae sure you have the zookeeper server and kafka server running (on all machines). 
+
+To register a master, navigate to the bin folder of your spark application and run the following in the cmd: spark-class.cmd org.apache.spark.deploy.master.Master.
+
+This will generate a URL for a webpage. At the top of the webpage, there will be a url with a port number. You will use this to connect the worker.
+
+In a DIFFERENT cmd, navigate to the bin folder of your spark application and run the following in the cmd: spark-class.cmd org.apache.spark.deploy.worker.Worker url/on/master/ui.
+
+For me this looked like spark-class.cmd org.apache.spark.deploy.worker.Worker spark://10.0.0.137:7077.
+
+Refresh the master UI and you should see a worker in the worker list. 
+
+Now you can submit a spark job on the master machine, but make sure to connect it to the master URL. So instead of local[*] write spark://________:7077.
+
+For me this was C:\spark\spark\bin\spark-submit --master spark://10.0.0.137:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 C:\Users\lsikk\git\comp5012_course_project\Kafka_Python\Testing\spark_job.py.
+
+For this to work, python.exe should be found at the same location on all machines.
