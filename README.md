@@ -84,4 +84,6 @@ For me this was C:\spark\spark\bin\spark-submit --master spark://10.0.0.137:7077
 
 For this to work, python.exe should be found at the same location on all machines.
 
-In the example, submit the spark job (make sure there are no errors). Then run the yahoo producer (be sure to change the IP addresses accordingly). You should see information being printed to the console. There will be a LOT of logging, but make sure to check that tables called Batch 0, Batch 1 etc. are also printed. These will have the data plus the UDF output results.
+In the example, submit the spark job (make sure there are no errors). Then run the yahoo producer (be sure to change the IP addresses accordingly). 
+
+In the latest push, I made it so that the output is written to a file in C://sparkoutputs. There should be a JSON file in there for every batch you run. The first one will be blank. The names will be really weird e.g., part-00000-aa5c00ca-2e7c-4aaf-b890-9b8e25db4a22-c000.json. 
