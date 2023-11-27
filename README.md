@@ -83,3 +83,5 @@ Now you can submit a spark job on the master machine, but make sure to connect i
 For me this was C:\spark\spark\bin\spark-submit --master spark://10.0.0.137:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 C:\Users\lsikk\git\comp5012_course_project\Kafka_Python\Testing\spark_job.py.
 
 For this to work, python.exe should be found at the same location on all machines.
+
+In the example, submit the spark job (make sure there are no errors). Then run the yahoo producer (be sure to change the IP addresses accordingly). You should see information being printed to the console. There will be a LOT of logging, but make sure to check that tables called Batch 0, Batch 1 etc. are also printed. These will have the data plus the UDF output results.
