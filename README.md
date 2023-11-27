@@ -38,7 +38,7 @@ You should see the data print in the consumer console.
 
 ## 3. Registering UDFs
 
-In the example, there is a file called udf_functions.py that contains and registers a UDF. This can be used as a template for defining and registering your own UDF.
+In the example, there is a file called udf_functions.py that contains and registers a UDF. This can be used as a template for defining and registering your own UDF. ** NOTE THAT THIS FILE NO LONGER EXISTS AND THE FUNCTIONS HAVE BEEN MOVED TO SPARK_JOB.PY **
 
 In the spark_job.py file, this is the consumer. I renamed it for reasons I will explain later on in this section. This consumer is updated to include the results from the UDF as applied to the incoming stream.
 
