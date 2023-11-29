@@ -3,42 +3,33 @@ from pyspark.sql.functions import col
 from pyspark.sql.functions import udf
 from pyspark.sql.functions import pandas_udf
 from pyspark.sql.types import StringType
+from pyspark.sql.types import IntegerType
 import numpy as np
 import pandas as pd
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+from datetime import datetime
 
-def my_udf_function(key,value):
-    #print(key)
-    #print(value)
+def create_sequences(stock_data, length):
+  sequences = []
+  target_prices = []
+  dates = []
+  print(stock_data)
 
-    #convert the byte arrays to numpy array and make a dataframe
-    numpy_key = np.frombuffer(key,dtype=np.uint8)
-    numpy_value = np.frombuffer(value,dtype=np.uint8)
-    print(numpy_key)
-
-    #preprocess the data
-    df = pd.DataFrame({'Date': numpy_key.flatten(), 'Close': numpy_value.flatten()})
-    #df['Date'] = df['Date'].apply(lambda x: x.timestamp())
-    df['Close'] = df['Close'].astype(int)
-
-    #now we have date and closing price we will process sequences
-    sequences = []
-    target_prices = []
-    dates = []
-
-    #setting length of our seq = 5
-    length = 5
-    for i in range(len(df) - length):
-      seq = df['Close'][i:i+length]
-      date = df['Date'][i+length]
-      target_price = df['Close'][i+length]
+  for i in range(len(stock_data) - length):
+      seq = stock_data['Close'][i:i+length]
+      date = stock_data['Date'][i+length]
+      target_price = stock_data['Close'][i+length]
       dates.append(date)
       sequences.append(seq)
       target_prices.append(target_price)
-    dates = np.array(dates)
-    seq = np.array(sequences)
-    tar = np.array(target_prices)
+
+  return np.array(dates), np.array(sequences), np.array(target_prices)
+
+#this is a local function that trains LSTM and outputs the predicted prices
+def LSTM(df):
+    dates,seq,tar = create_sequences(df, 5)
+    print(dates, seq, tar)
 
     split = int(len(seq)*0.7)
     dates_train, dates_test, X_train, X_test, y_train, y_test = dates[:split], dates[split:], seq[:split], seq[split:], tar[:split], tar[split:]
@@ -52,13 +43,25 @@ def my_udf_function(key,value):
     X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
     print(y_train)
 
-    # Train the model
-    history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))
+    history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))    
+
     y_pred = model.predict(X_test)
 
     return y_pred
 
-my_udf = udf(my_udf_function, StringType())
+#this udf will process dates to date format
+def dates_udf(key):
+    date = datetime.strptime(key, "%Y-%m-%d")
+    return date
+
+#this udf format closing prices to integer type
+def prices_udf(values):
+    price = values.astype(int)
+    return price
+
+#registering both the udf's
+reg_dates_udf = udf(dates_udf, StringType())
+reg_prices_udf = udf(prices_udf, IntegerType())
 
 spark = SparkSession.builder \
     .appName("KafkaSparkStreamingApp") \
@@ -78,19 +81,36 @@ df = (spark.readStream
       .option("subscribe", kafka_topic)
       .load())
 
-result_df = df.withColumn("predicted_price",my_udf(col("key"),col("value")))
-#result_df.show()
-#df.withColumn("predicted_values", my_udf(spark.create_DataFrame(col("key"),col("value"))))
-#df.select(col['key'],col['value'],my_udf_function)
-# Specify the path to the output directory
+#adding processed columns of dates and price to the dataframe
+result_dates = df.withColumn("processed_dates",reg_dates_udf(col("key")))
+result_closing_prices = df.withColumn("processed_closing_prices",reg_prices_udf(col("value")))
+
+# Write the streaming DataFrame to memory so we can fetch it
+query = result_closing_prices \
+    .writeStream \
+    .outputMode("append") \
+    .format("memory") \
+    .queryName("streaming_data") \
+    .start()
+
+# Wait for a few seconds to collect some streaming data (you can adjust the duration)
+query.awaitTermination(timeout=10)
+query.stop()
+
+#once we have the processed dataframe we shall train the LSTM locally - output is y_pred/ prediction of closing prices
+#convert spark dataframe to pandas
+df_pandas = spark.sql("SELECT * FROM streaming_data").toPandas()
+y_pred = LSTM(df_pandas)
+'''
 output_path = "file:///C:/sparkoutput"  # Update the path as needed
 
-query = result_df \
-    .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)", "predicted_price") \
+
+query = df \
+    .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)", "processed_dates") \
     .writeStream \
     .outputMode("append") \
     .option('truncate', "false") \
     .format("console") \
     .start()
 
-query.awaitTermination()
+query.awaitTermination()'''
