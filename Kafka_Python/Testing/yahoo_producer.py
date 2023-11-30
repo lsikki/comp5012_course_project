@@ -12,9 +12,6 @@ kafka_config = {
 }
 producer = KafkaProducer(**kafka_config)
 
-#topic_name = 'sparkstreamtestyahooudf'
-topic_microsoft = 'microsoft'
-
 topic_amazon = 'amazon'
 api_key_amzn = 'P544V2LKQW6KH46R'
 symbol_amzn = 'AMZN'
@@ -33,32 +30,25 @@ if response.status_code == 200:
     data = response.json()
 
     # Access the time series data
-    time_series_data = data['Time Series (Daily)']
-    #print(time_series_data)
+    time_series_data = data.get('Time Series (Daily)', {})
     
-    # Sending the first few entries for now
-    for date, values in list(time_series_data.items()):
-        print(f'Date: {date}, Closing Price: {values["4. close"]}')
-        producer.send(topic_amazon, key=date, value=values["4. close"])
+    # Filter out entries with invalid closing prices
+    valid_entries = []
+    for date, values in time_series_data.items():
+        try:
+            closing_price = float(values['4. close'])
+            valid_entries.append((date, closing_price))
+        except ValueError:
+            print(f"Skipping entry with invalid closing price for date {date}: {values['4. close']}")
+
+    if valid_entries:
+        # Sending the filtered entries
+        for date, closing_price in valid_entries:
+            print(f'Date: {date}, Closing Price: {closing_price}')
+            producer.send(topic_amazon, key=date, value=closing_price)
+    else:
+        print("No valid entries to send to Kafka.")
 else:
     print(f'Error: {response.status_code}, {response.text}')
-
-
-'''
-
-yf_data = yf.download('AZN', start='2023-01-01', end='2023-02-01')
-yf_data = yf_data.reset_index()
-yf_data.index = range(1, len(yf_data) + 1)
-yf_data = yf_data[['Date', 'Close']]
-
-yf_data['Date'] = yf_data['Date'].apply(lambda x: int(x.timestamp()))
-
-# Just keep the date
-messages = yf_data.to_dict(orient='index')
-
-for key, value in messages.items():
-    value_without_date = {k: v for k, v in value.items() if k != 'Date'}
-    producer.send(topic_name, key=value['Date'], value=value_without_date)
-'''
 
 producer.close()
