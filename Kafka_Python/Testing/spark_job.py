@@ -1,66 +1,74 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
-from pyspark.sql.functions import udf
-from pyspark.sql.functions import pandas_udf
-from pyspark.sql.types import StringType
-from pyspark.sql.types import IntegerType
+from pyspark.sql.functions import col, udf
+from pyspark.sql.types import StringType, IntegerType, StructType, StructField, DateType
 import numpy as np
-import pandas as pd
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from datetime import datetime
 
 def create_sequences(stock_data, length):
-  sequences = []
-  target_prices = []
-  dates = []
-  print(stock_data)
+    sequences = []
+    target_prices = []
+    dates = []
 
-  for i in range(len(stock_data) - length):
-      seq = stock_data['Close'][i:i+length]
-      date = stock_data['Date'][i+length]
-      target_price = stock_data['Close'][i+length]
-      dates.append(date)
-      sequences.append(seq)
-      target_prices.append(target_price)
+    for i in range(len(stock_data) - length):
+        seq = stock_data['Close'][i:i+length]
+        date = stock_data['Date'][i+length]
+        target_price = stock_data['Close'][i+length]
+        dates.append(date)
+        sequences.append(seq)
+        target_prices.append(target_price)
 
-  return np.array(dates), np.array(sequences), np.array(target_prices)
+    return np.array(dates), np.array(sequences), np.array(target_prices)
 
-#this is a local function that trains LSTM and outputs the predicted prices
-def LSTM(df):
-    dates,seq,tar = create_sequences(df, 5)
-    print(dates, seq, tar)
+def LSTM_Model(spark, df):
+    if len(df) == 0:
+        print("DataFrame is empty.")
+        return
 
-    split = int(len(seq)*0.7)
-    dates_train, dates_test, X_train, X_test, y_train, y_test = dates[:split], dates[split:], seq[:split], seq[split:], tar[:split], tar[split:]
+    dates, seq, tar = create_sequences(df, 5)
+
+    split = int(len(seq) * 0.7)
+    dates_train, dates_test, X_train, X_test, y_train, y_test = (
+        dates[:split],
+        dates[split:],
+        seq[:split],
+        seq[split:],
+        tar[:split],
+        tar[split:],
+    )
 
     model = Sequential()
-    model.add(LSTM(50, activation = 'relu', input_shape = (5, 1)))
+    model.add(LSTM(50, activation='relu', input_shape=(5, 1)))
     model.add(Dense(1))
-    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.compile(optimizer='adam', loss='mean_squared_error', run_eagerly=True)  
 
-    X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
-    X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
-    print(y_train)
+    X_train = np.expand_dims(X_train, axis=1)
+    X_test = np.expand_dims(X_test, axis=1)
 
-    history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))    
+    X_train_df = spark.createDataFrame([(a.tolist(), b.tolist()) for a, b in zip(X_train, y_train)], ["features", "label"])
+    X_test_df = spark.createDataFrame([(a.tolist(), b.tolist()) for a, b in zip(X_test, y_test)], ["features", "label"])
 
+    history = model.fit(X_train_df, epochs=20, batch_size=32, validation_data=X_test_df)
     y_pred = model.predict(X_test)
 
     return y_pred
 
-#this udf will process dates to date format
 def dates_udf(key):
-    date = datetime.strptime(key, "%Y-%m-%d")
+    key_str = key.decode('utf-8')
+    date = datetime.strptime(key_str, "%Y-%m-%d")
     return date
 
-#this udf format closing prices to integer type
-def prices_udf(values):
-    price = values.astype(int)
-    return price
+def prices_udf(value):
+    value_str = value.decode('utf-8').replace('"', '').strip()
+    
+    try:
+        price = int(value_str)
+        return price
+    except ValueError:
+        return None  
 
-#registering both the udf's
-reg_dates_udf = udf(dates_udf, StringType())
+reg_dates_udf = udf(dates_udf, DateType())
 reg_prices_udf = udf(prices_udf, IntegerType())
 
 spark = SparkSession.builder \
@@ -72,7 +80,7 @@ spark = SparkSession.builder \
     .config("spark.sql.execution.arrow.enabled", "true") \
     .getOrCreate()
 
-kafka_bootstrap_servers = '172.17.12.108:9092'
+kafka_bootstrap_servers = '10.0.0.137:9092'
 kafka_topic = "amazon"
 
 df = (spark.readStream
@@ -81,36 +89,28 @@ df = (spark.readStream
       .option("subscribe", kafka_topic)
       .load())
 
-#adding processed columns of dates and price to the dataframe
-result_dates = df.withColumn("processed_dates",reg_dates_udf(col("key")))
-result_closing_prices = df.withColumn("processed_closing_prices",reg_prices_udf(col("value")))
 
-# Write the streaming DataFrame to memory so we can fetch it
-query = result_closing_prices \
+result = df.withColumn("processed_dates", reg_dates_udf(col("key"))) \
+            .withColumn("processed_closing_prices", reg_prices_udf(col("value")))
+
+
+def process_batch(batch_df, batch_id):
+    
+    pandas_df = batch_df.toPandas()
+
+    
+    print(pandas_df.head())
+
+    
+    y_pred = LSTM_Model(spark, pandas_df)
+    if y_pred is not None:
+        print("LSTM Predictions:", y_pred)
+
+
+query = result \
     .writeStream \
     .outputMode("append") \
-    .format("memory") \
-    .queryName("streaming_data") \
+    .foreachBatch(process_batch) \
     .start()
 
-# Wait for a few seconds to collect some streaming data (you can adjust the duration)
-query.awaitTermination(timeout=10)
-query.stop()
-
-#once we have the processed dataframe we shall train the LSTM locally - output is y_pred/ prediction of closing prices
-#convert spark dataframe to pandas
-df_pandas = spark.sql("SELECT * FROM streaming_data").toPandas()
-y_pred = LSTM(df_pandas)
-'''
-output_path = "file:///C:/sparkoutput"  # Update the path as needed
-
-
-query = df \
-    .selectExpr("CAST(key AS STRING)", "CAST(value AS STRING)", "processed_dates") \
-    .writeStream \
-    .outputMode("append") \
-    .option('truncate', "false") \
-    .format("console") \
-    .start()
-
-query.awaitTermination()'''
+query.awaitTermination(timeout=30)

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import requests
 
 kafka_config = {
-    'bootstrap_servers': '172.17.12.108:9092',
+    'bootstrap_servers': '10.0.0.137:9092',
     'client_id': 'laila-python-producer',
     'value_serializer': lambda v: json.dumps(v).encode('utf-8'),
     'key_serializer': lambda k: str(k).encode('utf-8') if k is not None else None
