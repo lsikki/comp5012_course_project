@@ -8,6 +8,7 @@ To produce/consume to/from a topic, make sure the zookeeper and kafka servers ar
 
 Make sure the IP addresses in the server.properties and zookeeper.properties match to your local machine/cluster (will change depending on the network).
 
+
 Troubleshooting:
 
 If the zookeeper server does not run properly, try running: call kafka-run-class org.apache.zookeeper.server.quorum.QuorumPeerMain ..\..\config\zookeeper.properties
@@ -19,6 +20,9 @@ In the producer python script, make sure the IP addresses in your bootstrap-serv
 For example, if you are just working on one machine, make sure you are only working with localhost:9092. 
 
 If you want other machines to see what you publish on this topic, be sure to include their IP addresses in this list. For this, you also need to add the local machine's IP address to the advertised.listeners field in server.properties.
+
+
+
 
 ## 2. Connecting Spark
 
@@ -87,3 +91,52 @@ For this to work, python.exe should be found at the same location on all machine
 In the example, submit the spark job (make sure there are no errors). Then run the yahoo producer (be sure to change the IP addresses accordingly). 
 
 In the latest push, I made it so that the output is written to a file in C://sparkoutputs. There should be a JSON file in there for every batch you run. The first one will be blank. The names will be really weird e.g., part-00000-aa5c00ca-2e7c-4aaf-b890-9b8e25db4a22-c000.json. 
+
+
+
+
+
+
+
+Quick commands for next lunch:
+
+Start ZooKeeper:
+
+cd c:\spark\kafka
+.\bin\windows\zookeeper-server-start.bat .\config\zookeeper.properties
+
+
+Start Kafka:
+
+cd c:\spark\kafka
+.\bin\windows\kafka-server-start.bat .\config\server.properties
+
+Create new topic my-topic:
+cd c:\spark\kafka
+.\bin\windows\kafka-topics.bat --create --topic my-topic --bootstrap-server localhost:9092 --partitions 1 --replication-factor 1
+
+
+Produce to my-topic:
+cd c:\spark\kafka
+.\bin\windows\kafka-console-producer.bat --topic my-topic --bootstrap-server localhost:9092
+
+Consumer from my-topic;
+
+cd c:\spark\kafka
+.\bin\windows\kafka-console-consumer.bat --topic my-topic --bootstrap-server localhost:9092 --from-beginning
+
+Register master:
+cd c:\spark\spark\bin
+spark-class.cmd org.apache.spark.deploy.master.Master
+
+
+Connect worker:
+cd c:\spark\spark\bin
+spark-class.cmd org.apache.spark.deploy.worker.Worker spark://169.254.232.170:7077
+
+
+
+Submit spark job
+
+cd C:\spark\spark\bin
+spark-submit --master spark://192.168.1.118:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 C:\spark\project\Kafka_Python\Testing\spark_job.py
