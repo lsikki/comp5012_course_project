@@ -98,7 +98,7 @@ spark = SparkSession.builder \
 
 # Kafka setup
 kafka_bootstrap_servers = '172.17.12.108:9092'
-kafka_topic = "amazon"
+kafka_topic = "microsoft"
 
 # Read data from Kafka
 df = (spark.readStream
