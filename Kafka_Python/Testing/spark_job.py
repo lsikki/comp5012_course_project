@@ -1,13 +1,11 @@
-import json
-import pandas as pd
-import logging
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, udf
-from pyspark.sql.types import StringType, IntegerType, StructType, StructField, DateType
+from pyspark.sql.types import StringType, DoubleType, StructType, StructField, DateType
 import numpy as np
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from datetime import datetime
+import pandas as pd
 
 # Function to create sequences for LSTM
 def create_sequences(stock_data, length):
@@ -16,48 +14,45 @@ def create_sequences(stock_data, length):
     dates = []
 
     for i in range(len(stock_data) - length):
-        seq = stock_data['Close'][i:i+length]
-        date = stock_data['Date'][i+length]
-        target_price = stock_data['Close'][i+length]
+        seq = stock_data['processed_closing_prices'][i:i+length]
+        date = stock_data['processed_dates'][i+length]
+        target_price = stock_data['processed_closing_prices'][i+length]
+        
+        # Log the 'Close' values here
+        print(f"Date: {date}, Close: {seq}")
+
         dates.append(date)
         sequences.append(seq)
         target_prices.append(target_price)
 
     return np.array(dates), np.array(sequences), np.array(target_prices)
 
+
 # LSTM Model
-def LSTM_Model(spark, df):
-    if len(df) == 0:
-        logger.info("DataFrame is empty.")
-        return
+def LSTM_Model(df):
+    if len(df) != 0:
+        dates,seq,tar = create_sequences(df, 5)
+        print(dates, seq, tar)
 
-    dates, seq, tar = create_sequences(df, 5)
+        split = int(len(seq)*0.7)
+        dates_train, dates_test, X_train, X_test, y_train, y_test = dates[:split], dates[split:], seq[:split], seq[split:], tar[:split], tar[split:]
 
-    split = int(len(seq) * 0.7)
-    dates_train, dates_test, X_train, X_test, y_train, y_test = (
-        dates[:split],
-        dates[split:],
-        seq[:split],
-        seq[split:],
-        tar[:split],
-        tar[split:],
-    )
+        model = Sequential()
+        model.add(LSTM(50, activation = 'relu', input_shape = (5, 1)))
+        model.add(Dense(1))
+        model.compile(optimizer='adam', loss='mean_squared_error')
 
-    model = Sequential()
-    model.add(LSTM(50, activation='relu', input_shape=(5, 1)))
-    model.add(Dense(1))
-    model.compile(optimizer='adam', loss='mean_squared_error', run_eagerly=True)  
+        X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+        X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
+        print(y_train)
 
-    X_train = np.expand_dims(X_train, axis=1)
-    X_test = np.expand_dims(X_test, axis=1)
+        history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))    
 
-    X_train_df = spark.createDataFrame([(a.tolist(), b.tolist()) for a, b in zip(X_train, y_train)], ["features", "label"])
-    X_test_df = spark.createDataFrame([(a.tolist(), b.tolist()) for a, b in zip(X_test, y_test)], ["features", "label"])
-
-    history = model.fit(X_train_df, epochs=20, batch_size=32, validation_data=X_test_df)
-    y_pred = model.predict(X_test)
-
+        y_pred = model.predict(X_test)
+    else:
+        y_pred = []
     return y_pred
+
 
 # UDF to process dates
 def dates_udf(key):
@@ -67,21 +62,18 @@ def dates_udf(key):
 
 # UDF to process prices
 def prices_udf(value):
-    value_str = value.decode('utf-8').replace('"', '').strip()
+    value_str = value.decode('utf-8')
+    x = value_str
     
     try:
-        price = int(value_str)
-        return price
+        return x
     except ValueError:
-        return None  
+        return None
+
 
 # UDF registration
 reg_dates_udf = udf(dates_udf, DateType())
-reg_prices_udf = udf(prices_udf, IntegerType())
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+reg_prices_udf = udf(prices_udf, DoubleType())
 
 # Spark Session creation
 spark = SparkSession.builder \
@@ -94,7 +86,7 @@ spark = SparkSession.builder \
     .getOrCreate()
 
 # Kafka setup
-kafka_bootstrap_servers = '10.0.0.137:9092'
+kafka_bootstrap_servers = '172.17.12.108:9092'
 kafka_topic = "amazon"
 
 # Read data from Kafka
@@ -108,42 +100,27 @@ df.printSchema()
 
 # Process data with UDFs
 result = df.withColumn("processed_dates", reg_dates_udf(col("key"))) \
-            .withColumn("processed_closing_prices", reg_prices_udf(col("value")))
+            .withColumn("processed_closing_prices", col("value"))
 
-# Function to process each batch
 def process_batch(batch_df, batch_id):
-    pandas_df = batch_df.toPandas()
+    pandas_df = batch_df.toPandas()    
+    pandas_df['processed_closing_prices'] = pandas_df['processed_closing_prices'].apply(
+        lambda x: float(x.decode('utf-8').replace('"', '')) if isinstance(x, bytes) else x
+    )
+    columns_to_keep = ['processed_dates', 'processed_closing_prices']
 
-    if len(pandas_df) == 0:
-        logger.info(f"Batch {batch_id} is empty.")
-        return
+    pandas_filtered = pandas_df[columns_to_keep]
+    
+    y_pred = LSTM_Model(pandas_filtered)
+    print(f"Batch {batch_id} - LSTM Predictions: {y_pred}")
 
-    try:
-        # Extracting date and closing prices from the batch
-        date = pandas_df['processed_dates'].iloc[-1]
-        closing_prices_str = pandas_df['processed_closing_prices'].iloc[-1]
-
-        logger.info(f"Processing Batch {batch_id} - Date: {date}, Closing Prices: {closing_prices_str}")
-
-        # Handling different scenarios for closing prices content
-        if not pd.isna(closing_prices_str) and closing_prices_str.lower() != 'nan':
-            # If it's a non-null string and not 'nan', attempt to convert it to a JSON object
-            closing_prices = json.loads(closing_prices_str)
-        else:
-            # If it's null, NaN, or 'nan', handle accordingly (e.g., raise an error or set to an empty list)
-            closing_prices = []
-
-        # Create a DataFrame with 'Date' and 'Close' columns
-        batch_df = pd.DataFrame({'Date': [date] * len(closing_prices), 'Close': closing_prices})
-
-        logger.info(f"Processed Batch {batch_id} - Data: {batch_df.to_dict()}")
-
-        # Perform LSTM predictions on the batch_df
-        y_pred = LSTM_Model(spark, batch_df)
-        if y_pred is not None:
-            logger.info(f"Batch {batch_id} - LSTM Predictions: {y_pred}")
-    except Exception as e:
-        logger.error(f"Error processing batch {batch_id}: {str(e)}")
+    # try:
+    #     y_pred = LSTM_Model(spark, pandas_filtered)
+    #     if y_pred is not None:
+    #         print(f"Batch {batch_id} - LSTM Predictions: {y_pred}")
+    #     else: print('yo')
+    # except Exception as e:
+    #     print(f"Error processing batch {batch_id}: {str(pandas_filtered)}")
 
 # Start the streaming query
 query = result \
