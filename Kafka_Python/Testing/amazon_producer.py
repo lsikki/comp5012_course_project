@@ -6,7 +6,7 @@ import csv
 
 # Kafka configuration
 kafka_config = {
-    'bootstrap_servers': '192.168.1.118:9092',
+    'bootstrap_servers': '10.0.0.10:9092',
     'client_id': 'python-producer',
     'value_serializer': lambda v: json.dumps(v).encode('utf-8'),
     'key_serializer': lambda k: str(k).encode('utf-8') if k is not None else None
@@ -41,11 +41,10 @@ if response.status_code == 200:
             timestamp, closing_price = row[0], row[1]
             
             # Example: Send data to Kafka
-            kafka_data = {'symbol': symbol_amzn, 'timestamp': timestamp, 'closing_price': closing_price}
-            producer.send(topic_amazon, value=kafka_data)
-            
-            # Print each row
-            print(row)
+            if timestamp != 'timestamp':
+                producer.send(topic_amazon, key = timestamp, value=closing_price)
+            # Print
+            print(timestamp)
     else:
         print(f'Error: Unexpected content type. Content type: {content_type}')
 
