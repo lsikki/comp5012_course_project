@@ -5,67 +5,80 @@ import numpy as np
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
 from datetime import datetime
+from sklearn.metrics import mean_squared_error
+import pandas as pd
 
 def create_sequences(stock_data, length):
     sequences = []
     target_prices = []
     dates = []
+    print(stock_data)
 
     for i in range(len(stock_data) - length):
-        seq = stock_data['Close'][i:i+length]
-        date = stock_data['Date'][i+length]
-        target_price = stock_data['Close'][i+length]
+        seq = stock_data['processed_closing_prices'][i:i+length]
+        date = stock_data['processed_dates'][i+length]
+        target_price = stock_data['processed_closing_prices'][i+length]
+        
+        # Log the 'Close' values here
+        print(f"Date: {date}, Close: {seq}")
+
         dates.append(date)
         sequences.append(seq)
         target_prices.append(target_price)
 
     return np.array(dates), np.array(sequences), np.array(target_prices)
 
-def LSTM_Model(spark, df):
-    if len(df) == 0:
-        print("DataFrame is empty.")
-        return
 
-    dates, seq, tar = create_sequences(df, 5)
+# LSTM Model
+def LSTM_Model(pandas_df, df):
+    if len(df) != 0:
+        print("printing length: " + str(len(df)))
+        #print("the whole dataframe")
+        #print(pandas_df)
+        dates,seq,tar = create_sequences(df, 5)
+        
+        #print(dates, seq, tar)
 
-    split = int(len(seq) * 0.7)
-    dates_train, dates_test, X_train, X_test, y_train, y_test = (
-        dates[:split],
-        dates[split:],
-        seq[:split],
-        seq[split:],
-        tar[:split],
-        tar[split:],
-    )
+        split = int(len(seq)*0.7)
+        dates_train, dates_test, X_train, X_test, y_train, y_test = dates[:split], dates[split:], seq[:split], seq[split:], tar[:split], tar[split:]
 
-    model = Sequential()
-    model.add(LSTM(50, activation='relu', input_shape=(5, 1)))
-    model.add(Dense(1))
-    model.compile(optimizer='adam', loss='mean_squared_error', run_eagerly=True)  
+        model = Sequential()
+        model.add(LSTM(50, activation = 'relu', input_shape = (5, 1)))
+        model.add(Dense(1))
+        model.compile(optimizer='adam', loss='mean_squared_error')
 
-    X_train = np.expand_dims(X_train, axis=1)
-    X_test = np.expand_dims(X_test, axis=1)
+        X_train = X_train.reshape((X_train.shape[0], X_train.shape[1], 1))
+        X_test = X_test.reshape((X_test.shape[0], X_test.shape[1], 1))
+        #print(y_train)
 
-    X_train_df = spark.createDataFrame([(a.tolist(), b.tolist()) for a, b in zip(X_train, y_train)], ["features", "label"])
-    X_test_df = spark.createDataFrame([(a.tolist(), b.tolist()) for a, b in zip(X_test, y_test)], ["features", "label"])
+        history = model.fit(X_train, y_train, epochs=20, batch_size=32, validation_data=(X_test, y_test))    
 
-    history = model.fit(X_train_df, epochs=20, batch_size=32, validation_data=X_test_df)
-    y_pred = model.predict(X_test)
-
+        import matplotlib.pyplot as plt
+        y_pred = model.predict(X_test)
+        mse = mean_squared_error(y_test, y_pred)
+        print(mse)
+        
+        plt.plot(dates_test, y_pred)
+        plt.plot(dates_test, y_test)
+        plt.savefig('example_plot.png')
+        plt.show()
+    else:
+        y_pred = []
     return y_pred
 
 def dates_udf(key):
     key_str = key.decode('utf-8')
     date = datetime.strptime(key_str, "%Y-%m-%d")
-    return key_str
+    return date
 
+# UDF to process prices
 def prices_udf(value):
     value_str = value.decode('utf-8')
+    x = value_str
     try:
-        price = float(value_str)
-        return price
+        return x
     except ValueError:
-        return None  
+        return None
 
 reg_dates_udf = udf(dates_udf, DateType())
 reg_prices_udf = udf(prices_udf, DoubleType())
@@ -93,8 +106,8 @@ result = df.withColumn("processed_dates", reg_dates_udf(col("key"))) \
 
 
 def process_batch(batch_df, batch_id):
-    print(batch_df)
-    pandas_df = batch_df  
+    pandas_df = batch_df.toPandas()
+        
     pandas_df['processed_closing_prices'] = pandas_df['processed_closing_prices'].apply(
         lambda x: float(x.decode('utf-8').replace('"', '')) if isinstance(x, bytes) else x
     )
@@ -102,8 +115,8 @@ def process_batch(batch_df, batch_id):
 
     pandas_filtered = pandas_df[columns_to_keep]
     
-    y_pred = LSTM_Model(spark, pandas_filtered)
-    print(f"Batch {batch_id} - LSTM Predictions: {y_pred}")
+    y_pred = LSTM_Model(pandas_df, pandas_filtered)
+    print(f"Batch {batch_id} - LSTM Predictions: {y_pred}")
 
 
 query = result \
