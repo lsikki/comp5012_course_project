@@ -98,7 +98,7 @@ In the latest push, I made it so that the output is written to a file in C://spa
 
 
 
-##Quick commands for next lunch:
+## Quick commands for next lunch:
 
 Start ZooKeeper:
 
