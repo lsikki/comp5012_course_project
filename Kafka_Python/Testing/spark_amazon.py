@@ -60,7 +60,11 @@ def LSTM_Model(pandas_df, df):
         
         plt.plot(dates_test, y_pred)
         plt.plot(dates_test, y_test)
-        plt.savefig('example_plot.png')
+        plt.xlabel('Years')
+        plt.ylabel('Stock Price')
+        plt.title('Amazon')
+        plt.legend()
+        plt.savefig('Amazon_Stock_Prediction.png')
         plt.show()
     else:
         y_pred = []
@@ -92,7 +96,7 @@ spark = SparkSession.builder \
     .config("spark.sql.execution.arrow.enabled", "true") \
     .getOrCreate()
 
-kafka_bootstrap_servers = '10.0.0.137:9092'
+kafka_bootstrap_servers = '172.17.12.108:9092'
 kafka_topic = "amazon"
 
 df = (spark.readStream

@@ -58,7 +58,11 @@ def LSTM_Model(df):
         
         plt.plot(dates_test, y_pred)
         plt.plot(dates_test, y_test)
-        plt.savefig('example_plot.png')
+        plt.xlabel('Years')
+        plt.ylabel('Stock Price')
+        plt.title('Microsoft')
+        plt.legend()
+        plt.savefig('Microsoft_Stock_Prediction.png')
         plt.show()
     else:
         y_pred = []
@@ -132,7 +136,7 @@ query = result \
     .writeStream \
     .outputMode("append") \
     .foreachBatch(process_batch) \
-    .trigger(processingTime="50 seconds") \
+    .trigger(processingTime="15 seconds") \
     .start()
 
 query.awaitTermination(timeout=30)
