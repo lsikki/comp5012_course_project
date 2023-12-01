@@ -124,6 +124,7 @@ query = result \
     .writeStream \
     .outputMode("append") \
     .foreachBatch(process_batch) \
+    .trigger(processingTime='15 seconds') \
     .start()
 
 query.awaitTermination(timeout=30)
