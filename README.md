@@ -140,3 +140,29 @@ Submit spark job
 
 cd C:\spark\spark\bin
 spark-submit --master spark://192.168.1.118:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 C:\spark\project\Kafka_Python\Testing\spark_job.py
+
+
+
+
+## Producing Data from One Device to Another:
+Before starting Zookeeper and Kafka, navigate to the Kafka configuration directory on the consumer device. Edit the server.properties file to set the advertised.listeners property to the external IP address or hostname of the Kafka server on the producer device.
+
+advertised.listeners=PLAINTEXT://<producer-device-ip>:9092
+
+Perform this configuration on all devices, and don't forget to delete the '#' to uncomment the line.
+
+
+Now, start Zookeeper and Kafka, create a topic, and produce the data on the producer device.
+
+Consuming Data:
+
+Open a new CMD window and navigate to the Kafka directory. Use the kafka-console-consumer.bat script to start consuming data from the topic:
+
+bin\windows\kafka-console-consumer.bat --topic your_topic_name --bootstrap-server <producer-device-ip>:9092
+
+
+
+
+
+
+

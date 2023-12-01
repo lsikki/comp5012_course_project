@@ -6,7 +6,7 @@ import requests
 
 kafka_config = {
     'bootstrap_servers': '192.168.1.118:9092',
-    'client_id': 'laila-python-producer',
+    'client_id': 'python-producer',
     'value_serializer': lambda v: json.dumps(v).encode('utf-8'),
     'key_serializer': lambda k: str(k).encode('utf-8') if k is not None else None
 }
