@@ -92,7 +92,7 @@ spark = SparkSession.builder \
     .config("spark.sql.execution.arrow.enabled", "true") \
     .getOrCreate()
 
-kafka_bootstrap_servers = '10.0.0.10:9092'
+kafka_bootstrap_servers = '10.0.0.137:9092'
 kafka_topic = "amazon"
 
 df = (spark.readStream
@@ -102,7 +102,7 @@ df = (spark.readStream
       .load())
 
 result = df.withColumn("processed_dates", reg_dates_udf(col("key"))) \
-            .withColumn("processed_closing_prices", reg_prices_udf(col("value")))
+            .withColumn("processed_closing_prices", col("value"))
 
 
 def process_batch(batch_df, batch_id):
@@ -114,6 +114,7 @@ def process_batch(batch_df, batch_id):
     columns_to_keep = ['processed_dates', 'processed_closing_prices']
 
     pandas_filtered = pandas_df[columns_to_keep]
+    print('LAILAAAAAAAAAAAAAA', pandas_filtered)
     
     y_pred = LSTM_Model(pandas_df, pandas_filtered)
     print(f"Batch {batch_id} - LSTM Predictions: {y_pred}")
