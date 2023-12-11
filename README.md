@@ -78,13 +78,9 @@ This will generate a URL for a webpage. At the top of the webpage, there will be
 
 In a DIFFERENT cmd, navigate to the bin folder of your spark application and run the following in the cmd: spark-class.cmd org.apache.spark.deploy.worker.Worker url/on/master/ui.
 
-For me this looked like spark-class.cmd org.apache.spark.deploy.worker.Worker spark://10.0.0.137:7077.
-
 Refresh the master UI and you should see a worker in the worker list. 
 
 Now you can submit a spark job on the master machine, but make sure to connect it to the master URL. So instead of local[*] write spark://________:7077.
-
-For me this was C:\spark\spark\bin\spark-submit --master spark://10.0.0.137:7077 --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0 C:\Users\lsikk\git\comp5012_course_project\Kafka_Python\Testing\spark_job.py.
 
 For this to work, python.exe should be found at the same location on all machines.
 
